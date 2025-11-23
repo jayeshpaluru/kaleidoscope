@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaleidoscope</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+
+    <!-- MediaPipe Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        /* --- CSS STYLES --- */
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-purple: #bc13fe;
+            --bg-dark: #050505;
+            --panel-bg: rgba(20, 20, 25, 0.85);
+        }
+
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: 'Rajdhani', sans-serif;
+            background-color: var(--bg-dark);
+            color: #fff;
+        }
+
+        /* Top Half: Kaleidoscope */
+        #kaleidoscope-container {
+            height: 70%; 
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+            width: 100%;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+            z-index: 1;
+        }
+
+        #kaleidoscope-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Camera View */
+        #input_video {
+            display: block;
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 140px;
+            height: auto;
+            border: 1px solid var(--neon-blue);
+            border-radius: 4px;
+            transform: scaleX(-1);
+            opacity: 0.5;
+            z-index: 50;
+            transition: opacity 0.3s;
+        }
+        #input_video:hover { opacity: 1; }
+        
+        /* Status indicator */
+        #tracking-status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: var(--neon-blue);
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 100;
+            border-left: 3px solid var(--neon-blue);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            backdrop-filter: blur(4px);
+        }
+
+        /* Resizer Handle */
+        #resizer {
+            height: 4px;
+            background: linear-gradient(90deg, var(--neon-purple), var(--neon-blue));
+            cursor: row-resize;
+            width: 100%;
+            flex-shrink: 0;
+            z-index: 200;
+            box-shadow: 0 0 10px var(--neon-blue);
+        }
+
+        /* Bottom Half: Controls */
+        #controls {
+            flex: 1;
+            display: flex;
+            background-color: #0a0a0a;
+            background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, #0a0a0a 70%);
+            min-height: 100px;
+            position: relative;
+        }
+
+        .controls-left {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-right: 1px solid #333;
+            padding: 20px;
+        }
+
+        .controls-right {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .slider-container {
+            margin: 12px 0;
+            width: 80%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            margin-bottom: 8px;
+            font-weight: 700;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px rgba(255,255,255,0.3);
+        }
+
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus { outline: none; }
+        
+        /* Slider Track */
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #333;
+            border-radius: 3px;
+            border: 1px solid #444;
+        }
+        
+        /* Slider Thumb */
+        input[type=range]::-webkit-slider-thumb {
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -7px; /* center on track */
+            box-shadow: 0 0 10px var(--neon-blue);
+        }
+
+        /* Specific Slider Colors */
+        #red-slider::-webkit-slider-thumb { background: #ff4444; box-shadow: 0 0 10px #ff4444; }
+        #green-slider::-webkit-slider-thumb { background: #44ff44; box-shadow: 0 0 10px #44ff44; }
+        #blue-slider::-webkit-slider-thumb { background: #4444ff; box-shadow: 0 0 10px #4444ff; }
+
+        /* Tripiness Panel Styles */
+        .tripiness-controls {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .tripiness-square {
+            width: 90px;
+            height: 90px;
+            background-color: #000;
+            position: relative;
+            cursor: crosshair;
+            overflow: hidden;
+            border-radius: 8px;
+            border: 1px solid #333;
+            transition: border-color 0.2s;
+        }
+        
+        .tripiness-square:hover {
+            border-color: var(--neon-purple);
+            box-shadow: 0 0 15px rgba(188, 19, 254, 0.3);
+        }
+
+        /* Grid lines inside squares */
+        .tripiness-square::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+            pointer-events: none;
+        }
+        .tripiness-square::after {
+            content: '';
+            position: absolute;
+            left: 50%; top: 0; bottom: 0;
+            width: 1px;
+            background: rgba(255,255,255,0.1);
+            pointer-events: none;
+        }
+
+        .control-dot {
+            width: 10px;
+            height: 10px;
+            background-color: var(--neon-blue);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            box-shadow: 0 0 8px var(--neon-blue);
+            border: 2px solid #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- KALEIDOSCOPE AREA -->
+    <div id="kaleidoscope-container">
+        <div id="tracking-status">Initializing Camera...</div>
+        <canvas id="kaleidoscope-canvas"></canvas>
+        <video id="input_video"></video>
+    </div>
+
+    <!-- RESIZER HANDLE -->
+    <div id="resizer"></div>
+
+    <!-- CONTROLS AREA -->
+    <div id="controls">
+        <!-- Sliders -->
+        <div class="controls-left">
+            <div class="slider-container">
+                <label for="red-slider" style="color: #ff5555;">Red Base</label>
+                <input type="range" id="red-slider" min="0" max="255" value="180">
+            </div>
+            <div class="slider-container">
+                <label for="green-slider" style="color: #55ff55;">Green Base</label>
+                <input type="range" id="green-slider" min="0" max="255" value="50">
+            </div>
+            <div class="slider-container">
+                <label for="blue-slider" style="color: #5555ff;">Blue Base</label>
+                <input type="range" id="blue-slider" min="0" max="255" value="220">
+            </div>
+        </div>
+
+        <!-- Tripiness Panel -->
+        <div class="controls-right">
+            <div class="tripiness-controls">
+                <div class="tripiness-square" id="sq-0" title="X: Segments, Y: Melt Speed"><div class="control-dot"></div></div>
+                <div class="tripiness-square" id="sq-1" title="X: Depth Layers, Y: Tunnel Depth"><div class="control-dot"></div></div>
+                <div class="tripiness-square" id="sq-2" title="X: Distortion, Y: Wobble"><div class="control-dot"></div></div>
+                <div class="tripiness-square" id="sq-3" title="X: Color Cycle, Y: Glow"><div class="control-dot"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("App Initialized");
+
+            const canvas = document.getElementById('kaleidoscope-canvas');
+            const container = document.getElementById('kaleidoscope-container');
+            const ctx = canvas.getContext('2d');
+            const statusEl = document.getElementById('tracking-status');
+
+            // State Variables
+            let state = {
+                r: 180, g: 50, b: 220,
+                controls: [
+                    { x: 0.5, y: 0.5 }, // Sq 0: Segments & Melt Speed
+                    { x: 0.5, y: 0.5 }, // Sq 1: Depth Layers & Tunnel Depth
+                    { x: 0.5, y: 0.5 }, // Sq 2: Distortion & Wobble
+                    { x: 0.5, y: 0.5 }  // Sq 3: Color Cycle & Glow
+                ],
+                time: 0,
+                headX: 0, // Normalized -1 to 1
+                headY: 0, // Normalized -1 to 1
+                circleScale: 0.95
+            };
+
+            // Resize Logic
+            function resize() {
+                canvas.width = container.clientWidth;
+                canvas.height = container.clientHeight;
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            // --- SCROLL TO RESIZE CIRCLE ---
+            container.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = e.deltaY * -0.001;
+                state.circleScale = Math.max(0.1, Math.min(2.0, state.circleScale + delta));
+            });
+
+            // --- RESIZER LOGIC ---
+            const resizer = document.getElementById('resizer');
+            const topPanel = document.getElementById('kaleidoscope-container');
+            let isResizingLayout = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizingLayout = true;
+                document.body.style.cursor = 'row-resize';
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizingLayout) return;
+                const totalHeight = document.body.clientHeight;
+                const newHeightPercent = (e.clientY / totalHeight) * 100;
+                if (newHeightPercent > 10 && newHeightPercent < 90) {
+                    topPanel.style.height = `${newHeightPercent}%`;
+                    resize();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if(isResizingLayout) {
+                    isResizingLayout = false;
+                    document.body.style.cursor = 'default';
+                }
+            });
+
+
+            // --- MEDIAPIPE SETUP ---
+            const videoElement = document.getElementById('input_video');
+
+            function onResults(results) {
+                if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                    statusEl.innerText = "Eye Tracking Active";
+                    statusEl.style.color = "#00f3ff";
+                    statusEl.style.borderLeftColor = "#00f3ff";
+                    
+                    const landmarks = results.multiFaceLandmarks[0];
+                    const leftIris = landmarks[468];
+                    const rightIris = landmarks[473];
+                    
+                    const midX = (leftIris.x + rightIris.x) / 2;
+                    const midY = (leftIris.y + rightIris.y) / 2;
+                    
+                    // Sensitivity factor
+                    const targetX = (0.5 - midX) * 6.0; 
+                    const targetY = (midY - 0.5) * 6.0;
+                    
+                    state.headX += (targetX - state.headX) * 0.1;
+                    state.headY += (targetY - state.headY) * 0.1;
+                } else {
+                    statusEl.innerText = "Face not found";
+                    statusEl.style.color = "yellow";
+                    statusEl.style.borderLeftColor = "yellow";
+                }
+            }
+
+            const faceMesh = new FaceMesh({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }});
+            
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            faceMesh.onResults(onResults);
+
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await faceMesh.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            camera.start().catch(e => {
+                statusEl.innerText = "Camera Error: " + e;
+                statusEl.style.color = "red";
+            });
+
+
+            // --- RENDER LOOP ---
+            function animate() {
+                // Update time with a base speed plus control influence
+                state.time += 0.01 + (state.controls[0].y * 0.03);
+                render();
+                requestAnimationFrame(animate);
+            }
+
+            function render() {
+                const width = canvas.width;
+                const height = canvas.height;
+                const centerX = width / 2;
+                const centerY = height / 2;
+                
+                const maxRadius = Math.min(width, height) * 0.5 * state.circleScale;
+
+                // 1. Clear background
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, width, height);
+
+                // 2. Circular Clipping
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
+                ctx.clip();
+
+                // Deep void background
+                const bgGrad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
+                bgGrad.addColorStop(0, '#000');
+                bgGrad.addColorStop(1, '#100010');
+                ctx.fillStyle = bgGrad;
+                ctx.fill();
+
+                // --- Parameters ---
+                const segments = Math.floor(3 + (state.controls[0].x * 9)); // 3 to 12 segments
+                const depthLayers = 20 + Math.floor(state.controls[1].x * 20);
+                const perspectiveStrength = 100 + (state.controls[1].y * 300);
+                
+                const distortion = state.controls[2].x * 2.0;
+                const wobble = state.controls[2].y * 0.5;
+                
+                const offsetX = state.headX * perspectiveStrength;
+                const offsetY = state.headY * perspectiveStrength;
+
+                // FIX: Use source-over to prevent whiteout and allow solid colors
+                ctx.globalCompositeOperation = 'source-over'; 
+
+                // FIX: Prepare layers for sorting
+                // We need to draw from furthest (z=1) to closest (z=0) for the tunnel effect to work with solid colors
+                let layersToDraw = [];
+                for (let layer = 0; layer < depthLayers; layer++) {
+                    let z = (layer / depthLayers - (state.time * 0.05)) % 1;
+                    if (z < 0) z += 1; 
+                    layersToDraw.push({ z, layerIndex: layer });
+                }
+
+                // Sort: Draw furthest (z=1) first, closest (z=0) last
+                layersToDraw.sort((a, b) => b.z - a.z);
+
+                // Draw Layers - Deep Tunnel (Far to Near)
+                for (let item of layersToDraw) {
+                    const depth = item.z;
+                    
+                    // Non-linear scale for "warp" effect
+                    const scale = Math.pow(1 - depth, 2.5) * maxRadius * 2.5;
+                    
+                    // Alpha fade
+                    let alpha = 1;
+                    if (depth > 0.85) alpha = (1 - depth) * 6; // Fade out at center
+                    if (depth < 0.1) alpha = depth * 10; // Fade in at camera
+                    
+                    // Rotation with organic wobble
+                    const layerRotation = (state.time * 0.1) + (depth * Math.PI) + (Math.sin(state.time + depth * 10) * wobble);
+
+                    ctx.save();
+                    
+                    // Parallax Logic
+                    const layerX = centerX + (offsetX * depth);
+                    const layerY = centerY + (offsetY * depth);
+                    
+                    ctx.translate(layerX, layerY);
+                    ctx.rotate(layerRotation);
+
+                    const angleStep = (Math.PI * 2) / segments;
+
+                    for (let i = 0; i < segments; i++) {
+                        ctx.save();
+                        ctx.rotate(i * angleStep);
+
+                        // --- PSYCHEDELIC COLOR GENERATION ---
+                        const hueBase = (state.controls[3].x * 360) + (state.time * 50);
+                        const hue = (hueBase + (depth * 720) + (i * 30)) % 360;
+                        
+                        const s = 80 + Math.sin(state.time * 2 + depth * 10) * 20;
+                        const l = 50 + Math.sin(state.time * 3 + i) * 10;
+                        
+                        // Solid colors for the "melt" look
+                        ctx.fillStyle = `hsla(${hue}, ${s}%, ${l}%, ${alpha})`;
+                        ctx.strokeStyle = `hsla(${hue}, ${s}%, ${l + 20}%, ${alpha})`;
+                        ctx.lineWidth = 2;
+
+                        // --- ORGANIC SHAPE DRAWING ---
+                        ctx.beginPath();
+                        
+                        // Increased size (0.6) to ensure shapes overlap and "melt" together
+                        const shapeSize = scale * 0.6;
+                        const points = 20; 
+                        
+                        for (let p = 0; p <= points; p++) {
+                            const theta = (p / points) * (Math.PI * 2);
+                            
+                            // "Melting" Math
+                            const melt = Math.sin(theta * 3 + state.time * 2 + depth * 10) * 0.2 * distortion +
+                                         Math.cos(theta * 5 - state.time * 3) * 0.1 * distortion;
+                            
+                            const r = shapeSize * (1 + melt);
+                            
+                            const x = r * Math.cos(theta) + shapeSize; 
+                            const y = r * Math.sin(theta) * 0.5; 
+                            
+                            if (p === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }
+                        
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.restore();
+                    }
+                    ctx.restore();
+                }
+                
+                ctx.restore(); // End Clip
+                
+                // Border
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 8;
+                ctx.stroke();
+            }
+
+            // --- CONTROLS LOGIC ---
+            const rSlider = document.getElementById('red-slider');
+            const gSlider = document.getElementById('green-slider');
+            const bSlider = document.getElementById('blue-slider');
+
+            rSlider.value = state.r;
+            gSlider.value = state.g;
+            bSlider.value = state.b;
+
+            rSlider.addEventListener('input', (e) => { state.r = parseInt(e.target.value); });
+            gSlider.addEventListener('input', (e) => { state.g = parseInt(e.target.value); });
+            bSlider.addEventListener('input', (e) => { state.b = parseInt(e.target.value); });
+
+            // XY Pad Logic
+            const squares = document.querySelectorAll('.tripiness-square');
+            let isDragging = false;
+            let activeSquareIndex = -1;
+
+            squares.forEach((sq, index) => {
+                const dot = sq.querySelector('.control-dot');
+                dot.style.left = '50%';
+                dot.style.top = '50%';
+
+                const updateDotPosition = (e) => {
+                    const rect = sq.getBoundingClientRect();
+                    let x = e.clientX - rect.left;
+                    let y = e.clientY - rect.top;
+
+                    x = Math.max(0, Math.min(x, rect.width));
+                    y = Math.max(0, Math.min(y, rect.height));
+
+                    dot.style.left = `${x}px`;
+                    dot.style.top = `${y}px`;
+
+                    state.controls[index].x = x / rect.width;
+                    state.controls[index].y = y / rect.height;
+                };
+
+                sq.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    activeSquareIndex = index;
+                    updateDotPosition(e);
+                });
+                
+                window.addEventListener('mousemove', (e) => {
+                    if (isDragging && activeSquareIndex === index) {
+                        const rect = sq.getBoundingClientRect();
+                        let x = e.clientX - rect.left;
+                        let y = e.clientY - rect.top;
+                        x = Math.max(0, Math.min(x, rect.width));
+                        y = Math.max(0, Math.min(y, rect.height));
+
+                        const dot = sq.querySelector('.control-dot');
+                        dot.style.left = `${x}px`;
+                        dot.style.top = `${y}px`;
+
+                        state.controls[index].x = x / rect.width;
+                        state.controls[index].y = y / rect.height;
+                    }
+                });
+            });
+
+            window.addEventListener('mouseup', () => {
+                isDragging = false;
+                activeSquareIndex = -1;
+            });
+
+            animate();
+        });
+    </script>
+</body>
+</html>
