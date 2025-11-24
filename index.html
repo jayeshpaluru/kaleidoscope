@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kaleidoscope</title>
+    <!-- Updated viewport for mobile: prevents zooming and handles scaling -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LSD Melt Kaleidoscope with Eye Tracking</title>
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -28,6 +29,7 @@
         body {
             margin: 0;
             height: 100vh;
+            height: 100dvh; /* Fix for mobile address bars */
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -58,22 +60,18 @@
             height: 100%;
         }
         
-        /* Camera View */
+        /* Camera View - HIDDEN but active */
         #input_video {
             display: block;
             position: absolute;
             bottom: 20px;
             left: 20px;
-            width: 140px;
-            height: auto;
-            border: 1px solid var(--neon-blue);
-            border-radius: 4px;
-            transform: scaleX(-1);
-            opacity: 0.5;
-            z-index: 50;
-            transition: opacity 0.3s;
+            width: 1px; /* Keep minimal size for processing */
+            height: 1px;
+            opacity: 0; /* Invisible */
+            pointer-events: none;
+            z-index: -1;
         }
-        #input_video:hover { opacity: 1; }
         
         /* Status indicator */
         #tracking-status {
@@ -84,12 +82,13 @@
             background: rgba(0, 0, 0, 0.6);
             padding: 8px 16px;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 12px;
             z-index: 100;
             border-left: 3px solid var(--neon-blue);
             text-transform: uppercase;
             letter-spacing: 1px;
             backdrop-filter: blur(4px);
+            pointer-events: none;
         }
 
         /* Resizer Handle */
@@ -111,6 +110,7 @@
             background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, #0a0a0a 70%);
             min-height: 100px;
             position: relative;
+            overflow-y: auto; /* Allow scrolling on mobile if needed */
         }
 
         .controls-left {
@@ -192,6 +192,7 @@
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
+            touch-action: none; /* Prevent scrolling while touching pads */
         }
 
         .tripiness-square {
@@ -241,6 +242,39 @@
             pointer-events: none;
             box-shadow: 0 0 8px var(--neon-blue);
             border: 2px solid #fff;
+        }
+
+        /* MOBILE RESPONSIVE STYLES */
+        @media (max-width: 768px) {
+            #kaleidoscope-container {
+                height: 45%; /* Shrink canvas to fit controls */
+            }
+
+            #controls {
+                flex-direction: column; /* Stack controls vertically */
+                padding-bottom: 40px; /* Space for mobile home bar */
+            }
+
+            .controls-left {
+                border-right: none;
+                border-bottom: 1px solid #333;
+                padding: 15px;
+                flex: 0 0 auto;
+            }
+
+            .controls-right {
+                padding: 15px;
+                flex: 0 0 auto;
+            }
+
+            .tripiness-square {
+                width: 75px;
+                height: 75px;
+            }
+            
+            .slider-container {
+                margin: 8px 0;
+            }
         }
     </style>
 </head>
@@ -574,10 +608,10 @@
                 dot.style.left = '50%';
                 dot.style.top = '50%';
 
-                const updateDotPosition = (e) => {
+                const updateDotPosition = (clientX, clientY) => {
                     const rect = sq.getBoundingClientRect();
-                    let x = e.clientX - rect.left;
-                    let y = e.clientY - rect.top;
+                    let x = clientX - rect.left;
+                    let y = clientY - rect.top;
 
                     x = Math.max(0, Math.min(x, rect.width));
                     y = Math.max(0, Math.min(y, rect.height));
@@ -589,34 +623,45 @@
                     state.controls[index].y = y / rect.height;
                 };
 
+                // Mouse Events
                 sq.addEventListener('mousedown', (e) => {
                     isDragging = true;
                     activeSquareIndex = index;
-                    updateDotPosition(e);
+                    updateDotPosition(e.clientX, e.clientY);
                 });
                 
+                // Touch Events (Mobile Support)
+                sq.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); // Prevent scrolling
+                    isDragging = true;
+                    activeSquareIndex = index;
+                    const touch = e.touches[0];
+                    updateDotPosition(touch.clientX, touch.clientY);
+                }, { passive: false });
+
+                sq.addEventListener('touchmove', (e) => {
+                    if (isDragging && activeSquareIndex === index) {
+                        e.preventDefault();
+                        const touch = e.touches[0];
+                        updateDotPosition(touch.clientX, touch.clientY);
+                    }
+                }, { passive: false });
+                
+                // Window Mouse Move
                 window.addEventListener('mousemove', (e) => {
                     if (isDragging && activeSquareIndex === index) {
-                        const rect = sq.getBoundingClientRect();
-                        let x = e.clientX - rect.left;
-                        let y = e.clientY - rect.top;
-                        x = Math.max(0, Math.min(x, rect.width));
-                        y = Math.max(0, Math.min(y, rect.height));
-
-                        const dot = sq.querySelector('.control-dot');
-                        dot.style.left = `${x}px`;
-                        dot.style.top = `${y}px`;
-
-                        state.controls[index].x = x / rect.width;
-                        state.controls[index].y = y / rect.height;
+                        updateDotPosition(e.clientX, e.clientY);
                     }
                 });
             });
 
-            window.addEventListener('mouseup', () => {
+            const stopDrag = () => {
                 isDragging = false;
                 activeSquareIndex = -1;
-            });
+            };
+
+            window.addEventListener('mouseup', stopDrag);
+            window.addEventListener('touchend', stopDrag);
 
             animate();
         });
